@@ -5,7 +5,7 @@
 
 消息队列是一种“先进先出”的数据结构
 
-![](https://github.com/HuangAo/rocketMQDemo/blob/main/README.assets/queue1.png)
+![](README.assets/queue1.png)
 
 其应用场景主要包含以下3个方面
 
