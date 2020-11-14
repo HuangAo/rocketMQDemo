@@ -54,3 +54,72 @@
 常见的MQ产品包括Kafka、ActiveMQ、RabbitMQ、RocketMQ。 
 
 ![](README.assets/MQ比较.png)
+
+# 2. RocketMQ基础
+
+RocketMQ是阿里巴巴2016年MQ中间件，使用Java语言开发，在阿里内部，RocketMQ承接了例如“双11”等高并发场景的消息流转，能够处理万亿级别的消息。
+
+## 2.1 启动RocketMQ
+
+1. 启动NameServer
+
+```shell
+# 1.启动NameServer
+nohup sh bin/mqnamesrv &
+# 2.查看启动日志
+tail -f ~/logs/rocketmqlogs/namesrv.log
+```
+
+2. 启动Broker
+
+```shell
+# 1.启动Broker
+nohup sh bin/mqbroker -n localhost:9876 &
+# 2.查看启动日志
+tail -f ~/logs/rocketmqlogs/broker.log 
+```
+
+* 问题描述：
+
+  RocketMQ默认的虚拟机内存较大，启动Broker如果因为内存不足失败，需要编辑如下两个配置文件，修改JVM内存大小
+
+```shell
+# 编辑runbroker.sh和runserver.sh修改默认JVM大小
+vi runbroker.sh
+vi runserver.sh
+```
+
+* 参考设置：
+
+```JAVA_OPT="${JAVA_OPT} -server -Xms256m -Xmx256m -Xmn128m -XX:MetaspaceSize=128m  -XX:MaxMetaspaceSize=320m"```
+
+## 2.2 测试RocketMQ
+
+### 2.2.1 发送消息
+
+```sh
+# 1.设置环境变量
+export NAMESRV_ADDR=localhost:9876
+# 2.使用安装包的Demo发送消息
+sh bin/tools.sh org.apache.rocketmq.example.quickstart.Producer
+```
+
+### 2.2.2 接收消息
+
+```shell
+# 1.设置环境变量
+export NAMESRV_ADDR=localhost:9876
+# 2.接收消息
+sh bin/tools.sh org.apache.rocketmq.example.quickstart.Consumer
+```
+
+## 2.3 关闭RocketMQ
+
+```shell
+# 1.关闭NameServer
+sh bin/mqshutdown namesrv
+# 2.关闭Broker
+sh bin/mqshutdown broker
+```
+
+# 3. RocketMQ集群搭建
