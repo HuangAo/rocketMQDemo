@@ -122,4 +122,5 @@ sh bin/mqshutdown namesrv
 sh bin/mqshutdown broker
 ```
 
-# 3. RocketMQ集群搭建
+
+
