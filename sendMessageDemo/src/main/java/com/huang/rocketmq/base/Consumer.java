@@ -6,6 +6,7 @@ import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
 import org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 
 import java.util.List;
 
@@ -22,6 +23,9 @@ public class Consumer {
         consumer.setNamesrvAddr("192.168.127.201:9876");
         //3.订阅topic和tag
         consumer.subscribe("top1","tag3");
+        //指定消费者消息模式
+        //consumer.setMessageModel(MessageModel.CLUSTERING);//负载均衡模式（默认）
+        consumer.setMessageModel(MessageModel.BROADCASTING);//广播模式
         //4.设置回调函数，处理消息
         consumer.registerMessageListener(new MessageListenerConcurrently() {
             public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> list, ConsumeConcurrentlyContext consumeConcurrentlyContext) {
