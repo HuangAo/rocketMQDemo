@@ -696,5 +696,5 @@ java -jar rocketmq-console-ng-1.0.0.jar
 
 ![](README.assets/rocketmq-console2.png)
 
-集群状态：
+
 
