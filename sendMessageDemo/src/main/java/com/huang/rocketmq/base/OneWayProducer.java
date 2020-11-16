@@ -20,7 +20,7 @@ public class OneWayProducer {
         producer.setNamesrvAddr("192.168.127.201:9876");
         //3.启动producer
         producer.start();
-        
+
         for (int i=0;i<10;i++){
             //4.创建消息对象
             Message message = new Message("top1","tag3",("Hello,RocketMQ,OneWayMessage"+i).getBytes());
