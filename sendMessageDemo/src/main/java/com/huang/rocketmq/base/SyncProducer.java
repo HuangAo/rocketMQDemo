@@ -27,6 +27,8 @@ public class SyncProducer {
         for (int i=0;i<10;i++){
             //4.创建消息对象
             Message message = new Message("top1","tag1",("Hello,RocketMQ"+i).getBytes());
+           //设置消息的延迟发送
+           // message.setDelayTimeLevel(2);
             //5.发送消息
             SendResult result = producer.send(message);
             System.out.println("发送状态:"+ result.getSendStatus());
