@@ -696,5 +696,604 @@ java -jar rocketmq-console-ng-1.0.0.jar
 
 ![](README.assets/rocketmq-console2.png)
 
+# 4. 消息发送样例
+
+* 导入MQ客户端依赖
+
+```xml
+<dependency>
+    <groupId>org.apache.rocketmq</groupId>
+    <artifactId>rocketmq-client</artifactId>
+    <version>4.4.0</version>
+</dependency>
+```
+
+* 消息发送者步骤分析r
+
+```tex
+1.创建消息生产者producer，并制定生产者组名
+2.指定Nameserver地址
+3.启动producer
+4.创建消息对象，指定主题Topic、Tag和消息体
+5.发送消息
+6.关闭生产者producer
+```
+
+* 消息消费者步骤分析
+
+```tex
+1.创建消费者Consumer，制定消费者组名
+2.指定Nameserver地址
+3.订阅主题Topic和Tag
+4.设置回调函数，处理消息
+5.启动消费者consumer
+```
+
+## 4.1 基本样例
+
+### 4.1.1 消息发送
+
+#### 1）发送同步消息
+
+这种可靠性同步地发送方式使用的比较广泛，比如：重要的消息通知，短信通知。
+
+```java
+public class SyncProducer {
+    public static void main(String[] args) throws MQClientException, RemotingException, InterruptedException, MQBrokerException {
+        //1.创建消息生产者，设定生产者组名
+        DefaultMQProducer producer = new DefaultMQProducer("group1");
+        //2.指定NameServer地址
+        producer.setNamesrvAddr("192.168.127.201:9876");
+        //3.启动producer
+        producer.start();
+        for (int i=0;i<10;i++){
+            //4.创建消息对象
+            Message message = new Message("top1","tag1",("Hello,RocketMQ"+i).getBytes());
+           //设置消息的延迟发送
+           // message.setDelayTimeLevel(2);
+            //5.发送消息
+            SendResult result = producer.send(message);
+            System.out.println("发送状态:"+ result.getSendStatus());
+            System.out.println("发送结果:"+ result);
+            TimeUnit.SECONDS.sleep(1);
+        }
+        //6.关闭producer
+        producer.shutdown();
+    }
+}
+```
+
+#### 2）发送异步消息
+
+异步消息通常用在对响应时间敏感的业务场景，即发送端不能容忍长时间地等待Broker的响应。
+
+```java
+public class AsyncProducer {
+    public static void main(String[] args) throws Exception {
+        //1.创建消息生产者，设定生产者组名
+        DefaultMQProducer producer = new DefaultMQProducer("group1");
+        //2.指定NameServer地址
+        producer.setNamesrvAddr("192.168.127.201:9876");
+        //3.启动producer
+        producer.start();
+        for (int i=0;i<10;i++){
+            //4.创建消息对象
+            Message message = new Message("top1","tag2",("Hello,RocketMQ"+i).getBytes());
+            //5.发送异步消息
+            producer.send(message, new SendCallback() {
+                public void onSuccess(SendResult sendResult) {
+                    System.out.println("发送成功："+ sendResult);
+                }
+                public void onException(Throwable throwable) {
+                    System.out.println("发送异常:"+ throwable);
+                }
+            });
+            TimeUnit.SECONDS.sleep(1);
+        }
+        //6.关闭producer
+        producer.shutdown();
+    }
+}
+```
+
+#### 3）单向发送消息
+
+这种方式主要用在不特别关心发送结果的场景，例如日志发送。
+
+```java
+public class OneWayProducer {
+    public static void main(String[] args) throws Exception {
+        //1.创建消息生产者，设定生产者组名
+        DefaultMQProducer producer = new DefaultMQProducer("group1");
+        //2.指定NameServer地址
+        producer.setNamesrvAddr("192.168.127.201:9876");
+        //3.启动producer
+        producer.start();
+        for (int i=0;i<10;i++){
+            //4.创建消息对象
+            Message message = new Message("top1","tag3",("Hello,RocketMQ,OneWayMessage"+i).getBytes());
+            //5.发送单向消息
+            producer.sendOneway(message);
+            TimeUnit.SECONDS.sleep(1);
+        }
+        //6.关闭producer
+        producer.shutdown();
+    }
+}
+```
+
+### 4.1.2 消费消息
+
+#### 1）负载均衡模式
+
+消费者采用负载均衡方式消费消息，多个消费者共同消费队列消息，每个消费者处理的消息不同
+
+```java
+public static void main(String[] args) throws Exception {
+    // 实例化消息生产者,指定组名
+    DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("group1");
+    // 指定Namesrv地址信息.
+    consumer.setNamesrvAddr("localhost:9876");
+    // 订阅Topic
+    consumer.subscribe("Test", "*");
+    //负载均衡模式消费
+    consumer.setMessageModel(MessageModel.CLUSTERING);
+    // 注册回调函数，处理消息
+    consumer.registerMessageListener(new MessageListenerConcurrently() {
+        @Override
+        public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> msgs,
+                                                        ConsumeConcurrentlyContext context) {
+            System.out.printf("%s Receive New Messages: %s %n", 
+                              Thread.currentThread().getName(), msgs);
+            return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+        }
+    });
+    //启动消息者
+    consumer.start();
+    System.out.printf("Consumer Started.%n");
+}
+```
+
+#### 2）广播模式
+
+消费者采用广播的方式消费消息，每个消费者消费的消息都是相同的
+
+```java
+public static void main(String[] args) throws Exception {
+    // 实例化消息生产者,指定组名
+    DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("group1");
+    // 指定Namesrv地址信息.
+    consumer.setNamesrvAddr("localhost:9876");
+    // 订阅Topic
+    consumer.subscribe("Test", "*");
+    //广播模式消费
+    consumer.setMessageModel(MessageModel.BROADCASTING);
+    // 注册回调函数，处理消息
+    consumer.registerMessageListener(new MessageListenerConcurrently() {
+        @Override
+        public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> msgs,
+                                                        ConsumeConcurrentlyContext context) {
+            System.out.printf("%s Receive New Messages: %s %n", 
+                              Thread.currentThread().getName(), msgs);
+            return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+        }
+    });
+    //启动消息者
+    consumer.start();
+    System.out.printf("Consumer Started.%n");
+}
+```
+
+## 4.2 顺序消息
+
+消息有序指的是可以按照消息的发送顺序来消费(FIFO)。RocketMQ可以严格的保证消息有序，可以分为分区有序或者全局有序。
+
+顺序消费的原理解析，在默认的情况下消息发送会采取Round Robin轮询方式把消息发送到不同的queue(分区队列)；而消费消息的时候从多个queue上拉取消息，这种情况发送和消费是不能保证顺序。但是如果控制发送的顺序消息只依次发送到同一个queue中，消费的时候只从这个queue上依次拉取，则就保证了顺序。当发送和消费参与的queue只有一个，则是全局有序；如果多个queue参与，则为分区有序，即相对每个queue，消息都是有序的。
+
+### 4.2.1 顺序消息生产
+
+```java
+/**
+ * @author Huang Ao
+ * @date 2020/11/16 16:25
+ * 发送顺序消息
+ */
+public class OrderProducer {
+    public static void main(String[] args) throws Exception {
+        //1.创建消息生产者producer，并制定生产者组名
+        DefaultMQProducer producer = new DefaultMQProducer("group1");
+        //2.指定Nameserver地址
+        producer.setNamesrvAddr("192.168.127.201:9876");
+        //3.启动producer
+        producer.start();
+        //构建消息集合
+        //List<OrderStep> orderSteps = OrderStep.buildOrders();
+        HashMap<String,Object> orderMessage = new HashMap<String, Object>();
+        orderMessage.put("a","消息1-1");
+        orderMessage.put("b","消息1-2");
+        orderMessage.put("c","消息2-1");
+        orderMessage.put("d","消息2-2");
+        orderMessage.put("e","消息2-3");
+        //发送消息
+        for(Map.Entry<String,Object> entry: orderMessage.entrySet()){
+            String body = entry.getValue().toString();
+            Message message = new Message("OrderTopic","Order2",body.getBytes());
+            SendResult result = producer.send(message, new MessageQueueSelector() {
+                public MessageQueue select(List<MessageQueue> list, Message message, Object o) {
+                    int messageQueueOrder = 0;
+                    if(o.equals("a")||o.equals("b")){
+                        messageQueueOrder = 0;
+                    }else{
+                        messageQueueOrder = 1;
+                    }
+                    return list.get(messageQueueOrder);
+                }
+            },entry.getKey());
+            System.out.println("发送结果："+result);
+        }
+        producer.shutdown();
+    }
+}  
+```
+
+### 4.2.2 顺序消费消息
+
+```java
+/**
+ * @author Huang Ao
+ * @date 2020/11/16 16:52
+ * 接收顺序消息
+ */
+public class OrderConsumer {
+    public static void main(String[] args) throws Exception {
+        //1.创建消费者Consumer，制定消费者组名
+        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("group1");
+        //2.指定Nameserver地址
+        consumer.setNamesrvAddr("192.168.127.201:9876");
+        //3.订阅主题Topic和Tag
+        consumer.subscribe("OrderTopic", "*");
+        //4.注册消息监听器
+        consumer.registerMessageListener(new MessageListenerOrderly() {
+
+            @Override
+            public ConsumeOrderlyStatus consumeMessage(List<MessageExt> msgs, ConsumeOrderlyContext context) {
+                for (MessageExt msg : msgs) {
+                    System.out.println("线程名称：【" + Thread.currentThread().getName() + "】:" + new String(msg.getBody()));
+                }
+                return ConsumeOrderlyStatus.SUCCESS;
+            }
+        });
+        //5.启动消费者
+        consumer.start();
+
+        System.out.println("消费者启动");
+    }
+}
+```
+
+## 4.3 延时消息
+
+比如电商里，提交了一个订单就可以发送一个延时消息，1h后去检查这个订单的状态，如果还是未付款就取消订单释放库存。
+
+### 4.3.1 使用限制
+
+```java
+// org/apache/rocketmq/store/config/MessageStoreConfig.java
+private String messageDelayLevel = "1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h";
+```
+
+现在RocketMq并不支持任意时间的延时，需要设置几个固定的延时等级，从1s到2h分别对应着等级1到18
+
+## 4.4 批量消息
+
+批量发送消息能显著提高传递小消息的性能。限制是这些批量消息应该有相同的topic，相同的waitStoreMsgOK，而且不能是延时消息。此外，这一批消息的总大小不应超过4MB。
+
+### 4.4.1 发送批量消息
+
+如果您每次只发送不超过4MB的消息，则很容易使用批处理，样例如下：
+
+```java
+String topic = "BatchTest";
+List<Message> messages = new ArrayList<>();
+messages.add(new Message(topic, "TagA", "OrderID001", "Hello world 0".getBytes()));
+messages.add(new Message(topic, "TagA", "OrderID002", "Hello world 1".getBytes()));
+messages.add(new Message(topic, "TagA", "OrderID003", "Hello world 2".getBytes()));
+try {
+   producer.send(messages);
+} catch (Exception e) {
+   e.printStackTrace();
+   //处理error
+}
+```
+
+如果消息的总长度可能大于4MB时，这时候最好把消息进行分割
+
+```java
+public class ListSplitter implements Iterator<List<Message>> {
+   private final int SIZE_LIMIT = 1024 * 1024 * 4;
+   private final List<Message> messages;
+   private int currIndex;
+   public ListSplitter(List<Message> messages) {
+           this.messages = messages;
+   }
+    @Override 
+    public boolean hasNext() {
+       return currIndex < messages.size();
+   }
+   	@Override 
+    public List<Message> next() {
+       int nextIndex = currIndex;
+       int totalSize = 0;
+       for (; nextIndex < messages.size(); nextIndex++) {
+           Message message = messages.get(nextIndex);
+           int tmpSize = message.getTopic().length() + message.getBody().length;
+           Map<String, String> properties = message.getProperties();
+           for (Map.Entry<String, String> entry : properties.entrySet()) {
+               tmpSize += entry.getKey().length() + entry.getValue().length();
+           }
+           tmpSize = tmpSize + 20; // 增加日志的开销20字节
+           if (tmpSize > SIZE_LIMIT) {
+               //单个消息超过了最大的限制
+               //忽略,否则会阻塞分裂的进程
+               if (nextIndex - currIndex == 0) {
+                  //假如下一个子列表没有元素,则添加这个子列表然后退出循环,否则只是退出循环
+                  nextIndex++;
+               }
+               break;
+           }
+           if (tmpSize + totalSize > SIZE_LIMIT) {
+               break;
+           } else {
+               totalSize += tmpSize;
+           }
+
+       }
+       List<Message> subList = messages.subList(currIndex, nextIndex);
+       currIndex = nextIndex;
+       return subList;
+   }
+}
+//把大的消息分裂成若干个小的消息
+ListSplitter splitter = new ListSplitter(messages);
+while (splitter.hasNext()) {
+  try {
+      List<Message>  listItem = splitter.next();
+      producer.send(listItem);
+  } catch (Exception e) {
+      e.printStackTrace();
+      //处理error
+  }
+}
+```
+
+## 4.5 过滤消息
+
+在大多数情况下，TAG是一个简单而有用的设计，其可以来选择您想要的消息。例如：
+
+```java
+DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("CID_EXAMPLE");
+consumer.subscribe("TOPIC", "TAGA || TAGB || TAGC");
+```
+
+消费者将接收包含TAGA或TAGB或TAGC的消息。但是限制是一个消息只能有一个标签，这对于复杂的场景可能不起作用。在这种情况下，可以使用SQL表达式筛选消息。SQL特性可以通过发送消息时的属性来进行计算。在RocketMQ定义的语法下，可以实现一些简单的逻辑。下面是一个例子：
+
+```te
+------------
+| message  |
+|----------|  a > 5 AND b = 'abc'
+| a = 10   |  --------------------> Gotten
+| b = 'abc'|
+| c = true |
+------------
+------------
+| message  |
+|----------|   a > 5 AND b = 'abc'
+| a = 1    |  --------------------> Missed
+| b = 'abc'|
+| c = true |
+------------
+```
+
+### 4.5.1 SQL基本语法
+
+RocketMQ只定义了一些基本语法来支持这个特性。你也可以很容易地扩展它。
+
+* 数值比较，比如：**>，>=，<，<=，BETWEEN，=；**
+* 字符比较，比如：**=，<>，IN；**
+* **IS NULL** 或者 **IS NOT NULL；**
+* 逻辑符号 **AND，OR，NOT；**
+
+常量支持类型为：
+
+* 数值，比如：**123，3.1415；**
+* 字符，比如：**'abc'，必须用单引号包裹起来；**
+* **NULL**，特殊的常量
+* 布尔值，**TRUE** 或 **FALSE**
+
+只有使用push模式的消费者才能用使用SQL92标准的sql语句，接口如下：
+
+```java
+public void subscribe(finalString topic, final MessageSelector messageSelector)
+```
+
+### 4.5.2 消息生产者
+
+发送消息时，你能通过`putUserProperty`来设置消息的属性
+
+```java
+DefaultMQProducer producer = new DefaultMQProducer("please_rename_unique_group_name");
+producer.start();
+Message msg = new Message("TopicTest",
+   tag,
+   ("Hello RocketMQ " + i).getBytes(RemotingHelper.DEFAULT_CHARSET)
+);
+// 设置一些属性
+msg.putUserProperty("a", String.valueOf(i));
+SendResult sendResult = producer.send(msg);
+
+producer.shutdown();
+```
+
+### 4.5.3 消息消费者
+
+用MessageSelector.bySql来使用sql筛选消息
+
+```java
+DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("please_rename_unique_group_name_4");
+// 只有订阅的消息有这个属性a, a >=0 and a <= 3
+consumer.subscribe("TopicTest", MessageSelector.bySql("a between 0 and 3");
+consumer.registerMessageListener(new MessageListenerConcurrently() {
+   @Override
+   public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> msgs, ConsumeConcurrentlyContext context) {
+       return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+   }
+});
+consumer.start();
+```
+
+## 4.6 事务消息
+
+###4.6.1 流程分析
+
+![](README.assets/事务消息.png)
 
 
+
+上图说明了事务消息的大致方案，其中分为两个流程：正常事务消息的发送及提交、事务消息的补偿流程。
+
+####1）事务消息发送及提交
+
+(1) 发送消息（half消息）。
+
+(2) 服务端响应消息写入结果。
+
+(3) 根据发送结果执行本地事务（如果写入失败，此时half消息对业务不可见，本地逻辑不执行）。
+
+(4) 根据本地事务状态执行Commit或者Rollback（Commit操作生成消息索引，消息对消费者可见）
+
+#### 2）事务补偿
+
+(1) 对没有Commit/Rollback的事务消息（pending状态的消息），从服务端发起一次“回查”
+
+(2) Producer收到回查消息，检查回查消息对应的本地事务的状态
+
+(3) 根据本地事务状态，重新Commit或者Rollback
+
+其中，补偿阶段用于解决消息Commit或者Rollback发生超时或者失败的情况。
+
+#### 3）事务消息状态
+
+事务消息共有三种状态，提交状态、回滚状态、中间状态：
+
+* TransactionStatus.CommitTransaction: 提交事务，它允许消费者消费此消息。
+* TransactionStatus.RollbackTransaction: 回滚事务，它代表该消息将被删除，不允许被消费。
+* TransactionStatus.Unknown: 中间状态，它代表需要检查消息队列来确定状态。
+
+###4.6.1 发送事务消息
+
+#### 1) 创建事务性生产者
+
+使用 `TransactionMQProducer`类创建生产者，并指定唯一的 `ProducerGroup`，就可以设置自定义线程池来处理这些检查请求。执行本地事务后、需要根据执行结果对消息队列进行回复。回传的事务状态在请参考前一节。
+
+```java
+/**
+ * @author Huang Ao
+ * @date 2020/11/17 11:17
+ * 事务消息生产者
+ */
+public class TxProducer {
+    public static void main(String[] args) throws Exception {
+        //1.创建消息生产者producer，并指定生产者组名
+        TransactionMQProducer producer = new TransactionMQProducer("group5");
+        //2.指定Nameserver地址
+        producer.setNamesrvAddr("192.168.127.201:9876");
+        //添加事务监听器
+        producer.setTransactionListener(new TransactionListener() {
+            /**
+             * 在该方法中执行本地事务
+             * @param msg
+             * @param arg
+             * @return
+             */
+            @Override
+            public LocalTransactionState executeLocalTransaction(Message msg, Object arg) {
+                if (StringUtils.equals("TAGA", msg.getTags())) {
+                    return LocalTransactionState.COMMIT_MESSAGE;
+                } else if (StringUtils.equals("TAGB", msg.getTags())) {
+                    return LocalTransactionState.ROLLBACK_MESSAGE;
+                } else if (StringUtils.equals("TAGC", msg.getTags())) {
+                    return LocalTransactionState.UNKNOW;
+                }
+                return LocalTransactionState.UNKNOW;
+            }
+
+            /**
+             * 该方法时MQ进行消息事务状态回查
+             * @param msg
+             * @return
+             */
+            @Override
+            public LocalTransactionState checkLocalTransaction(MessageExt msg) {
+                System.out.println("消息的Tag:" + msg.getTags());
+                return LocalTransactionState.COMMIT_MESSAGE;
+            }
+        });
+        //3.启动producer
+        producer.start();
+        String[] tags = {"TAGA", "TAGB", "TAGC"};
+        for (int i = 0; i < 3; i++) {
+            //4.创建消息对象，指定主题Topic、Tag和消息体
+            /**
+             * 参数一：消息主题Topic
+             * 参数二：消息Tag
+             * 参数三：消息内容
+             */
+            Message msg = new Message("TransactionTopic", tags[i], ("Hello World" + i).getBytes());
+            //5.发送消息
+            SendResult result = producer.sendMessageInTransaction(msg, null);
+            //发送状态
+            SendStatus status = result.getSendStatus();
+            System.out.println("发送结果:" + result);
+            //线程睡1秒
+            TimeUnit.SECONDS.sleep(2);
+        }
+    }
+}
+```
+
+#### 2）实现事务的监听接口
+
+当发送半消息成功时，我们使用 `executeLocalTransaction` 方法来执行本地事务。它返回前一节中提到的三个事务状态之一。`checkLocalTranscation` 方法用于检查本地事务状态，并回应消息队列的检查请求。它也是返回前一节中提到的三个事务状态之一。
+
+```java
+public class TransactionListenerImpl implements TransactionListener {
+
+    @Override
+    public LocalTransactionState executeLocalTransaction(Message msg, Object arg) {
+        System.out.println("执行本地事务");
+        if (StringUtils.equals("TagA", msg.getTags())) {
+            return LocalTransactionState.COMMIT_MESSAGE;
+        } else if (StringUtils.equals("TagB", msg.getTags())) {
+            return LocalTransactionState.ROLLBACK_MESSAGE;
+        } else {
+            return LocalTransactionState.UNKNOW;
+        }
+
+    }
+
+    @Override
+    public LocalTransactionState checkLocalTransaction(MessageExt msg) {
+        System.out.println("MQ检查消息Tag【"+msg.getTags()+"】的本地事务执行结果");
+        return LocalTransactionState.COMMIT_MESSAGE;
+    }
+}
+```
+
+### 4.6.2 使用限制
+
+1. 事务消息不支持延时消息和批量消息。
+2. 为了避免单个消息被检查太多次而导致半队列消息累积，我们默认将单个消息的检查次数限制为 15 次，但是用户可以通过 Broker 配置文件的 `transactionCheckMax`参数来修改此限制。如果已经检查某条消息超过 N 次的话（ N = `transactionCheckMax` ） 则 Broker 将丢弃此消息，并在默认情况下同时打印错误日志。用户可以通过重写 `AbstractTransactionCheckListener` 类来修改这个行为。
+3. 事务消息将在 Broker 配置文件中的参数 transactionMsgTimeout 这样的特定时间长度之后被检查。当发送事务消息时，用户还可以通过设置用户属性 CHECK_IMMUNITY_TIME_IN_SECONDS 来改变这个限制，该参数优先于 `transactionMsgTimeout` 参数。
+4. 事务性消息可能不止一次被检查或消费。
+5. 提交给用户的目标主题消息可能会失败，目前这依日志的记录而定。它的高可用性通过 RocketMQ 本身的高可用性机制来保证，如果希望确保事务消息不丢失、并且事务完整性得到保证，建议使用同步的双重写入机制。
+6. 事务消息的生产者 ID 不能与其他类型消息的生产者 ID 共享。与其他类型的消息不同，事务消息允许反向查询、MQ服务器能通过它们的生产者 ID 查询到消费者。
